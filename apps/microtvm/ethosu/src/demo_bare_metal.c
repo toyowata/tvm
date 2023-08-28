@@ -37,10 +37,10 @@ int main(int argc, char** argv) {
 
   printf("Running inference\n");
   struct tvmgen_default_outputs outputs = {
-      .MobilenetV2_Predictions_Reshape_11 = output,
+      .MobilenetV1_Predictions_Reshape_1 = output,
   };
   struct tvmgen_default_inputs inputs = {
-      .tfl_quantize = input,
+      .input = input,
   };
   struct ethosu_driver* driver = ethosu_reserve_driver();
   struct tvmgen_default_devices devices = {
@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
   ethosu_release_driver(driver);
 
   // Calculate index of max value
-  int8_t max_value = -128;
+  uint8_t max_value = 0;
   int32_t max_index = -1;
   for (unsigned int i = 0; i < output_len; ++i) {
     if (output[i] > max_value) {

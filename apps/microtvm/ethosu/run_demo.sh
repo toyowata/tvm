@@ -137,9 +137,10 @@ make cleanall
 mkdir -p build
 cd build
 
-# Get mobilenet_v2 tflite model
-mobilenet_url='https://github.com/ARM-software/ML-zoo/raw/b9e26e662c00e0c0b23587888e75ac1205a99b6e/models/image_classification/mobilenet_v2_1.0_224/tflite_int8/mobilenet_v2_1.0_224_INT8.tflite'
-curl --retry 64 -sSL ${mobilenet_url} -o ./mobilenet_v2_1.0_224_INT8.tflite
+# Get mobilenet_v1 tflite model
+wget https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz
+gunzip mobilenet_v1_1.0_224_quant.tgz
+tar xvf mobilenet_v1_1.0_224_quant.tar
 
 # Compile model for Arm(R) Cortex(R)-M55 CPU and Ethos(TM)-U55 NPU
 # An alternative to using "python3 -m tvm.driver.tvmc" is to call
@@ -155,7 +156,7 @@ python3 -m tvm.driver.tvmc compile --target=ethos-u,cmsis-nn,c \
     --pass-config tir.usmp.enable=1 \
     --pass-config tir.usmp.algorithm=hill_climb \
     --pass-config tir.disable_storage_rewrite=1 \
-    --pass-config tir.disable_vectorize=1 ./mobilenet_v2_1.0_224_INT8.tflite --output-format=mlf
+    --pass-config tir.disable_vectorize=1 ./mobilenet_v1_1.0_224_quant.tflite --output-format=mlf
 tar -xf module.tar
 
 # Get ImageNet labels
