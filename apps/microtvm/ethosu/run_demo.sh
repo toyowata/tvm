@@ -145,7 +145,7 @@ curl --retry 64 -sSL ${mobilenet_url} -o ./mobilenet_v2_1.0_224_INT8.tflite
 # An alternative to using "python3 -m tvm.driver.tvmc" is to call
 # "tvmc" directly once TVM has been pip installed.
 python3 -m tvm.driver.tvmc compile --target=ethos-u,cmsis-nn,c \
-    --target-ethos-u-accelerator_config=ethos-u55-256 \
+    --target-ethos-u-accelerator_config=ethos-u55-128 \
     --target-cmsis-nn-mcpu=cortex-m55 \
     --target-c-mcpu=cortex-m55 \
     --runtime=crt \
@@ -180,4 +180,4 @@ FVP_Corstone_SSE-300_Ethos-U55 -C cpu0.CFGDTCMSZ=15 \
 -C mps3_board.visualisation.disable-visualisation=1 -C mps3_board.telnetterminal0.start_telnet=0 \
 -C mps3_board.telnetterminal1.start_telnet=0 -C mps3_board.telnetterminal2.start_telnet=0 -C mps3_board.telnetterminal5.start_telnet=0 \
 -C ethosu.extra_args="--fast" \
--C ethosu.num_macs=256 ./build/demo
+-C ethosu.num_macs=128 ./build/demo

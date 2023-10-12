@@ -25,11 +25,11 @@
   +-------------------+------------+-------+------------+------------+
   | DTCM              | 0x20000000 | 512KB | Yes (R/W)  | No         |
   +-------------------+------------+-------+------------+------------+
-  | SSE-300 SRAM      | 0x21000000 |   2MB | Yes (R/W)  | Yes (R/W)  |
+  | SSE-300 SRAM      | 0x31000000 |   2MB | Yes (R/W)  | Yes (R/W)  |
   +-------------------+------------+-------+------------+------------+
-  | Data SRAM         | 0x01000000 |   2MB | Yes (R/W)  | Yes (R/W)  |
+  | Data SRAM         | 0x11000000 |   1MB | Yes (R/W)  | Yes (R/W)  |
   +-------------------+------------+-------+------------+------------+
-  | DDR               | 0x60000000 |  32MB | Yes (R/W)  | Yes (R/W)  |
+  | DDR               | 0x70000000 |  64MB | Yes (R/W)  | Yes (R/W)  |
   +-------------------+------------+-------+------------+------------+ */
 
 /*---------------------- ITCM Configuration ----------------------------------
@@ -56,8 +56,8 @@ __RAM_SIZE = 0x00080000;
     <o1> DATA_SRAM Size (in Bytes) <0x0-0xFFFFFFFF:8>
   </h>
  -----------------------------------------------------------------------------*/
-__DATA_SRAM_BASE = 0x01000000;
-__DATA_SRAM_SIZE = 0x00200000;
+__DATA_SRAM_BASE = 0x11000000;
+__DATA_SRAM_SIZE = 0x00100000;
 
 /*--------------------- Embedded SRAM Configuration ----------------------------
   <h> SRAM Configuration
@@ -65,7 +65,7 @@ __DATA_SRAM_SIZE = 0x00200000;
     <o1> SRAM Size (in Bytes) <0x0-0xFFFFFFFF:8>
   </h>
  -----------------------------------------------------------------------------*/
-__SRAM_BASE = 0x21000000;
+__SRAM_BASE = 0x31000000;
 __SRAM_SIZE = 0x00200000;
 
 /*--------------------- Stack / Heap Configuration ----------------------------
@@ -75,7 +75,7 @@ __SRAM_SIZE = 0x00200000;
   </h>
   -----------------------------------------------------------------------------*/
 __STACK_SIZE = 0x00008000;
-__HEAP_SIZE  = 0x00008000;
+__HEAP_SIZE  = 0x000C0000;
 
 /*--------------------- Embedded RAM Configuration ----------------------------
   <h> DDR Configuration
@@ -83,8 +83,8 @@ __HEAP_SIZE  = 0x00008000;
     <o1> DDR Size (in Bytes) <0x0-0xFFFFFFFF:8>
   </h>
  -----------------------------------------------------------------------------*/
-__DDR_BASE = 0x60000000;
-__DDR_SIZE = 0x02000000;
+__DDR_BASE = 0x70000000;
+__DDR_SIZE = 0x04000000;
 
 /*
  *-------------------- <<< end of configuration section >>> -------------------
@@ -133,18 +133,7 @@ ENTRY(Reset_Handler)
 
 SECTIONS
 {
-  /* .ddr is placed before .text so that .rodata.tvm is encountered before .rodata* */
-  .ddr :
-  {
-    . = ALIGN(16);
-    *(ethosu_scratch)
-    *(output_data_sec)
-    . = ALIGN (16);
-    *(.rodata.tvm)
-    . = ALIGN (16);
-  } > DDR
-
-  .text :
+  .text.at_itcm :
   {
     KEEP(*(.vectors))
     *(.text*)
@@ -166,40 +155,94 @@ SECTIONS
     *(SORT(.dtors.*))
     *(.dtors)
 
-    *(.rodata*)
-
     KEEP(*(.eh_frame*))
   } > ITCM
 
-  .ARM.extab :
-  {
-    *(.ARM.extab* .gnu.linkonce.armextab.*)
-  } > ITCM
-
   __exidx_start = .;
-  .ARM.exidx :
+  .ARM.exidx.at_itcm :
   {
     *(.ARM.exidx* .gnu.linkonce.armexidx.*)
   } > ITCM
   __exidx_end = .;
 
-  .copy.table :
-  {
-    . = ALIGN(4);
-    __copy_table_start__ = .;
-    LONG (__etext)
-    LONG (__data_start__)
-    LONG (__data_end__ - __data_start__)
-    /* Add each additional data section here */
-    __copy_table_end__ = .;
-  } > ITCM
-
-  .zero.table :
+  .zero.table.at_itcm :
   {
     . = ALIGN(4);
     __zero_table_start__ = .;
+
+    LONG (__bss_start__)
+    LONG ((__bss_end__ - __bss_start__)/4) /* Size is in 32-bit words */
+
     __zero_table_end__ = .;
   } > ITCM
+
+  .copy.table.at_itcm :
+  {
+    . = ALIGN(4);
+    __copy_table_start__ = .;
+
+    /* Section to be copied - part 1: any data to be placed in BRAM */
+    LONG (__etext)
+    LONG (__data_start__)
+    LONG ((__data_end__ - __data_start__)/4) /* Size is in 32-bit words */
+
+    /* Section to be copied - part 2: RO data for for DTCM */
+    LONG (__etext2)
+    LONG (__ro_data_start__)
+    LONG ((__ro_data_end__ - __ro_data_start__)/4) /* Size is in 32-bit words */
+
+    __copy_table_end__ = .;
+  } > ITCM
+
+  __itcm_total = ALIGN(4);
+
+  ASSERT( __itcm_total < (ORIGIN(ITCM) + LENGTH(ITCM)), "ITCM overflow")
+
+  .sram :
+  {
+    . = ALIGN(16);
+    *(.bss.ethosu_fast_memory);
+    *(.bss.noinit.*)
+    . = ALIGN(16);
+    *(.data.tvm);
+    . = ALIGN(16);
+  } > SRAM AT > SRAM
+
+  .bss :
+  {
+    . = ALIGN(4);
+    __bss_start__ = .;
+    *(.bss)
+    *(.bss.*)
+    *(COMMON)
+    . = ALIGN(4);
+    __bss_end__ = .;
+  } > DTCM AT > DTCM
+
+.stack (ORIGIN(DTCM) + LENGTH(DTCM) - __STACK_SIZE) (COPY) :
+  {
+    . = ALIGN(8);
+    __StackLimit = .;
+    . = . + __STACK_SIZE;
+    . = ALIGN(8);
+    __StackTop = .;
+  } > DTCM
+  PROVIDE(__stack = __StackTop);
+  ASSERT( (__STACK_SIZE + __bss_end__ - __bss_start__) <= LENGTH(DTCM),   "DTCM overflow")
+
+  /* Check if data + stack exceeds DTCM limit */
+  ASSERT(__StackLimit >= __bss_end__, "region DTCM overflowed with stack")
+
+  .ddr.at_ddr :
+  {
+    . = ALIGN(16);
+    *(ethosu_scratch)
+    . = ALIGN(16);
+    *(output_data_sec)
+    . = ALIGN(16);
+    *(.rodata.tvm)
+    . = ALIGN(16);
+  } > DDR AT > DDR
 
   /**
    * Location counter can end up 2byte aligned with narrow Thumb code but
@@ -208,16 +251,7 @@ SECTIONS
    */
   __etext = ALIGN (4);
 
-  .sram :
-  {
-    . = ALIGN(16);
-    *(.bss.ethosu_fast_memory);
-    . = ALIGN(16);
-    *(.data.tvm);
-    . = ALIGN(16);
-  } > SRAM AT > SRAM
-
-  .data : AT (__etext)
+  .bram.at_ddr : AT (__etext)
   {
     __data_start__ = .;
     *(vtable)
@@ -237,7 +271,6 @@ SECTIONS
     KEEP(*(.init_array))
     PROVIDE_HIDDEN (__init_array_end = .);
 
-
     . = ALIGN(4);
     /* finit data */
     PROVIDE_HIDDEN (__fini_array_start = .);
@@ -247,32 +280,26 @@ SECTIONS
 
     KEEP(*(.jcr*))
     . = ALIGN(4);
+
+    *(.ARM.extab* .gnu.linkonce.armextab.*)
+    . = ALIGN(4);
+
     /* All data end */
     __data_end__ = .;
+  } > DATA_SRAM
 
-  } > DTCM
+  __etext2 = __etext + (__data_end__ - __data_start__);
 
-  .bss.noinit (NOLOAD):
-  {
-    . = ALIGN(16);
-    *(.bss.noinit.*)
-    . = ALIGN(16);
-  } > SRAM AT > SRAM
-
-  .bss :
+  .data.at_ddr : AT (__etext2)
   {
     . = ALIGN(4);
-    __bss_start__ = .;
-    *(.bss)
-    *(.bss.*)
-    *(COMMON)
-    . = ALIGN(4);
-    __bss_end__ = .;
-  } > DTCM AT > DTCM
+    __ro_data_start__ = .;
 
-  .data_sram :
-  {
-    . = ALIGN(16);
+    /* exclude .rodata.tvm section */
+    *(EXCLUDE_FILE(*default_lib2.o) .rodata*)
+    . = ALIGN(4);
+
+    __ro_data_end__ = .;
   } > DATA_SRAM
 
   .heap (COPY) :
@@ -283,18 +310,11 @@ SECTIONS
     . = . + __HEAP_SIZE;
     . = ALIGN(8);
     __HeapLimit = .;
-  } > DTCM
+  } > DATA_SRAM
 
-  .stack (ORIGIN(DTCM) + LENGTH(DTCM) - __STACK_SIZE) (COPY) :
-  {
-    . = ALIGN(8);
-    __StackLimit = .;
-    . = . + __STACK_SIZE;
-    . = ALIGN(8);
-    __StackTop = .;
-  } > DTCM
-  PROVIDE(__stack = __StackTop);
-
-  /* Check if data + stack exceeds DTCM limit */
-  ASSERT(__StackLimit >= __bss_end__, "region DTCM overflowed with stack")
+  ASSERT (
+      (__ro_data_end__ - __ro_data_start__)
+    + (__data_end__  - __data_start__)
+    + __HEAP_SIZE <= LENGTH(DATA_SRAM),
+    "DATA_SRAM overflow")
 }
